@@ -23,6 +23,12 @@ func main() {
 	for i := 0; i < 1; i++ {
 		fmt.Println(<-rows)
 	}
+
+	writeSQLite(colNames, colTypes, rows)
+}
+
+func writeSQLite(colNames []string, colTypes []byte, rows <-chan []interface{}) {
+
 }
 
 func columnTypes(headers []dbf.FieldHeader) []byte {
@@ -34,7 +40,7 @@ func columnTypes(headers []dbf.FieldHeader) []byte {
 	return ans
 }
 
-func readDbf(filename string) ([]string, []byte, chan []interface{}) {
+func readDbf(filename string) ([]string, []byte, <-chan []interface{}) {
 	hax := func(version byte) error {
 		if version == 0x03 {
 			return nil
@@ -54,7 +60,7 @@ func readDbf(filename string) ([]string, []byte, chan []interface{}) {
 
 	rowChan := make(chan []interface{}, 1<<10)
 
-	go func(x *dbf.DBF, output chan []interface{}) {
+	go func(x *dbf.DBF, output chan<- []interface{}) {
 		defer testdbf.Close()
 		defer close(output)
 
