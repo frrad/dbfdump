@@ -1,13 +1,17 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
+	"log"
 
 	"github.com/SebastiaanKlippert/go-foxpro-dbf"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
-	colNames, colTypes, rows := readDbf("/home/frederickrobinson/go/src/github.com/frrad/meckleen/parcel_taxdata/Parcel_TaxData.dbf")
+	sourceFile := "/home/frederickrobinson/go/src/github.com/frrad/meckleen/parcel_taxdata/Parcel_TaxData.dbf"
+	colNames, colTypes, rows := readDbf(sourceFile)
 
 	lookup := map[byte]string{
 		'D': "date",
@@ -17,18 +21,43 @@ func main() {
 	}
 
 	for i, t := range colTypes {
-		fmt.Printf("%s(%d=%s) ", colNames[i], t, lookup[t])
+		fmt.Printf("%s\t(%d=%s)\n", colNames[i], t, lookup[t])
 	}
 
-	for i := 0; i < 1; i++ {
-		fmt.Println(<-rows)
+	outPath := "/home/frederickrobinson/outfile.sqlite"
+	err := writeSQLite(outPath, colNames, colTypes, rows)
+	if err != nil {
+		log.Fatalf("problem writing outdb: %v", err)
 	}
-
-	writeSQLite(colNames, colTypes, rows)
 }
 
-func writeSQLite(colNames []string, colTypes []byte, rows <-chan []interface{}) {
+func writeSQLite(outPath string, colNames []string, colTypes []byte, rows <-chan []interface{}) error {
+	database, err := sql.Open("sqlite3", outPath)
+	if err != nil {
+		return err
+	}
+	log.Println("opened db", outPath)
 
+	_, err = database.Exec("CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, firstname TEXT, lastname TEXT)")
+	if err != nil {
+		return err
+	}
+
+	insertStmt, err := database.Prepare("INSERT INTO people (firstname, lastname) VALUES (?, ?)")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := insertStmt.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}()
+	_, err = insertStmt.Exec("Nic", "Raboy")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func columnTypes(headers []dbf.FieldHeader) []byte {
