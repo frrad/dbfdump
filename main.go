@@ -13,32 +13,66 @@ func main() {
 	sourceFile := "/home/frederickrobinson/go/src/github.com/frrad/meckleen/parcel_taxdata/Parcel_TaxData.dbf"
 	colNames, colTypes, rows := readDbf(sourceFile)
 
-	lookup := map[byte]string{
-		'D': "date",
-		'F': "float",
-		'N': "numeric",
-		'C': "character",
-	}
-
-	for i, t := range colTypes {
-		fmt.Printf("%s\t(%d=%s)\n", colNames[i], t, lookup[t])
+	sqliteTypes, err := sqliteColumnsFromDBF(colTypes)
+	if err != nil {
+		log.Fatalf("problem translating sqlite column types: %v", err)
 	}
 
 	outPath := "/home/frederickrobinson/outfile.sqlite"
-	err := writeSQLite(outPath, colNames, colTypes, rows)
+	err = writeSQLite(outPath, colNames, sqliteTypes, rows)
 	if err != nil {
 		log.Fatalf("problem writing outdb: %v", err)
 	}
 }
 
-func writeSQLite(outPath string, colNames []string, colTypes []byte, rows <-chan []interface{}) error {
+func sqliteColumnsFromDBF(colTypes []byte) ([]string, error) {
+	lookup := map[byte]string{
+		'D': "DATE",
+		'F': "FLOAT",
+		'N': "NUMERIC",
+		'C': "CHARACTER",
+	}
+
+	out := make([]string, len(colTypes))
+	for i, inByte := range colTypes {
+		name, ok := lookup[inByte]
+		if !ok {
+			return out, fmt.Errorf("don't know how to decode byte %d", inByte)
+		}
+		out[i] = name
+	}
+
+	return out, nil
+}
+
+func buildCreate(colNames, colTypes []string) (string, error) {
+	n := len(colNames)
+	if len(colTypes) != n {
+		return "", fmt.Errorf("found %d column names but %d types", len(colNames), len(colTypes))
+	}
+
+	ans := ""
+	for i := 0; i < n-1; i++ {
+		ans += fmt.Sprintf("%s %s, ", colNames[i], colTypes[i])
+	}
+	ans += fmt.Sprintf("%s %s", colNames[n-1], colTypes[n-1])
+
+	return fmt.Sprintf("CREATE TABLE people (%s)", ans), nil
+}
+
+func writeSQLite(outPath string, colNames []string, colTypes []string, rows <-chan []interface{}) error {
 	database, err := sql.Open("sqlite3", outPath)
 	if err != nil {
 		return err
 	}
 	log.Println("opened db", outPath)
 
-	_, err = database.Exec("CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, firstname TEXT, lastname TEXT)")
+	createString, err := buildCreate(colNames, colTypes)
+	if err != nil {
+		return err
+	}
+	log.Printf("creating table with statement '%s'\n", createString)
+	_, err = database.Exec(createString)
 	if err != nil {
 		return err
 	}
