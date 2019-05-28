@@ -136,7 +136,7 @@ func readDbf(filename string, maxOver uint32) ([]string, []byte, <-chan []interf
 		if version == 0x03 {
 			return nil
 		}
-		return fmt.Errorf("butts")
+		return fmt.Errorf("didn't hack that value")
 	}
 
 	dbf.ValidFileVersionFunc = hax
