@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/SebastiaanKlippert/go-foxpro-dbf"
 	_ "github.com/mattn/go-sqlite3"
@@ -13,8 +14,11 @@ import (
 )
 
 var (
-	infile  string
-	outfile string
+	infile    string
+	outfile   string
+	tablename string
+
+	stripstrings bool
 )
 
 func init() {
@@ -22,6 +26,10 @@ func init() {
 	rootCmd.MarkFlagRequired("infile")
 	rootCmd.Flags().StringVar(&outfile, "outfile", "", "name of output sqlite file")
 	rootCmd.MarkFlagRequired("outfile")
+	rootCmd.Flags().StringVar(&tablename, "tablename", "", "name of table to add to  sqlite file")
+	rootCmd.MarkFlagRequired("tablename")
+
+	rootCmd.Flags().BoolVar(&stripstrings, "stripstrings", false, "should we strip strings while converting")
 }
 
 var rootCmd = &cobra.Command{
@@ -39,11 +47,14 @@ func Execute() {
 }
 
 func convert(cmd *cobra.Command, args []string) {
-	tableName := "people"
+	tableName := tablename
 	sourceFile := infile
 	outPath := outfile
 
 	colNames, colTypes, rows := readDbf(sourceFile, 0)
+	if stripstrings {
+		rows = stripRows(rows)
+	}
 
 	sqliteTypes, err := sqliteColumnsFromDBF(colTypes)
 	if err != nil {
@@ -54,6 +65,27 @@ func convert(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("problem writing outdb: %v", err)
 	}
+}
+
+func stripRows(toStrip <-chan []interface{}) <-chan []interface{} {
+	out := make(chan []interface{}, 10)
+
+	go func(input <-chan []interface{}, output chan<- []interface{}) {
+		for row := range input {
+			for i, val := range row {
+				strVal, ok := val.(string)
+				if !ok {
+					continue
+				}
+				row[i] = strings.Trim(strVal, " ")
+			}
+			output <- row
+		}
+		close(output)
+	}(toStrip, out)
+
+	return out
+
 }
 
 func sqliteColumnsFromDBF(colTypes []byte) ([]string, error) {
